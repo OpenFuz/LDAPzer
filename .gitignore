@@ -1,0 +1,125 @@
+# LDAPzer - LDAP Security Testing Tools
+# Git Ignore File
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+
+# PyCharm
+.idea/
+*.iml
+*.iws
+.idea_modules/
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Testing Results
+results/
+*.json
+!tools/test_harness/example_config.json
+*.html
+!tools/docs/*.html
+*.csv
+*.log
+test_results/
+test_output/
+reports/
+
+# Packet Captures
+*.pcap
+*.pcapng
+
+# Server Logs
+server_logs/
+ldap_logs/
+
+# Temporary Files
+*.tmp
+*.bak
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# OS Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Desktop.ini
+
+# Credentials (NEVER commit these!)
+*credentials*
+*password*
+*secret*
+.env
+.env.local
+config.ini
+secrets.yaml
+
+# Documentation Build
+docs/_build/
+docs/.doctrees/
+
+# Coverage Reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Environments
+*.local
+
+# Project Specific
+tools/preflight_checks/results/
+tools/test_harness/results/
+tools/examples/test_output/
+
+# Scapy specific
+*.pyc
+
+# Backup files
+*.backup

@@ -1,0 +1,13 @@
+# LDAP Protocol Security Testing Tools - Requirements
+
+# Core requirements (none - uses Python standard library)
+# The ASN.1 fuzzer works with Python 3.7+ standard library only
+
+# Optional: For Scapy-based packet crafting
+scapy>=2.5.0
+
+# Optional: For YAML configuration file support
+pyyaml>=5.4.0
+
+# Optional: For enhanced reporting
+jinja2>=3.0.0

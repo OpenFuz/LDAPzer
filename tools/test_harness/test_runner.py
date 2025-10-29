@@ -403,32 +403,38 @@ Examples:
                 results = runner.run_all_tests()
 
         # Export results
-        if args.output and results:
-            from results_logger import ResultsLogger
-            logger = ResultsLogger(args.output)
+        if args.output:
+            if not results:
+                print("\n⚠ Warning: No results to save (results is None or empty)")
+            else:
+                # Import ResultsLogger from same directory
+                sys.path.insert(0, os.path.dirname(__file__))
+                from results_logger import ResultsLogger
 
-            # Handle different result formats
-            if isinstance(results, list):
-                # Flatten results if needed
-                flat_results = []
-                for item in results:
-                    if isinstance(item, dict):
-                        # Dictionary of results by suite
-                        for suite_results in item.values():
-                            flat_results.extend(suite_results)
-                    else:
-                        flat_results.append(item)
+                logger = ResultsLogger(args.output)
 
-                logger.log_socket_results(flat_results)
-            elif isinstance(results, dict):
-                # Dictionary format from run_all_tests
-                flat_results = []
-                for suite_results in results.values():
-                    flat_results.extend(suite_results)
-                logger.log_socket_results(flat_results)
+                # Handle different result formats
+                if isinstance(results, list):
+                    # Flatten results if needed
+                    flat_results = []
+                    for item in results:
+                        if isinstance(item, dict):
+                            # Dictionary of results by suite
+                            for suite_results in item.values():
+                                flat_results.extend(suite_results)
+                        else:
+                            flat_results.append(item)
 
-            logger.save()
-            print(f"\nResults saved to {args.output}")
+                    logger.log_socket_results(flat_results)
+                elif isinstance(results, dict):
+                    # Dictionary format from run_all_tests
+                    flat_results = []
+                    for suite_results in results.values():
+                        flat_results.extend(suite_results)
+                    logger.log_socket_results(flat_results)
+
+                logger.save()
+                print(f"\nResults saved to {args.output}")
 
         print("\n✓ Test execution completed successfully")
         return 0

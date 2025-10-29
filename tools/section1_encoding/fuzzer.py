@@ -8,9 +8,14 @@ target LDAP server and collects results.
 import socket
 import time
 import logging
+import sys
+import os
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum
+
+# Add parent directory to path for common module
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 
 class ServerStatus(Enum):
@@ -171,7 +176,7 @@ class LDAPFuzzer:
             True if server responds, False otherwise
         """
         try:
-            from .ldap_messages import BindRequest, LDAPMessage
+            from common.ldap_messages import BindRequest, LDAPMessage
 
             sock, error = self._create_connection()
             if sock is None:
@@ -353,7 +358,7 @@ class LDAPFuzzer:
         Returns:
             Dictionary mapping test suite ID to list of results
         """
-        from .fuzz_generators import get_all_test_cases
+        from section1_encoding.fuzz_generators import get_all_test_cases
 
         all_tests = get_all_test_cases()
         all_results = {}
@@ -447,7 +452,7 @@ class LDAPFuzzer:
         Returns:
             List of FuzzResult objects
         """
-        from .fuzz_generators import get_all_test_cases, MutationGenerator
+        from section1_encoding.fuzz_generators import get_all_test_cases, MutationGenerator
 
         self.logger.info(f"Starting MUTATION mode: {'targeted' if targeted else 'random'}")
         self.logger.info(f"Generating {count} mutations from base test cases")
@@ -503,7 +508,7 @@ class LDAPFuzzer:
         Returns:
             List of FuzzResult objects
         """
-        from .fuzz_generators import get_all_test_cases
+        from section1_encoding.fuzz_generators import get_all_test_cases
 
         self.logger.info(f"Starting LOAD TEST mode")
         self.logger.info(f"Duration: {duration_seconds} seconds")

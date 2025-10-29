@@ -19,8 +19,8 @@ except ImportError:
     SCAPY_AVAILABLE = False
 
 
-from asn1_fuzzer.ber_encoder import BEREncoder, BERLength, BERTag
-from asn1_fuzzer.ldap_messages import (
+from common.ber_encoder import BEREncoder, BERLength, BERTag
+from common.ldap_messages import (
     LDAPMessage, BindRequest, SearchRequest, UnbindRequest,
     ExtendedRequest, AbandonRequest, LDAPControl
 )

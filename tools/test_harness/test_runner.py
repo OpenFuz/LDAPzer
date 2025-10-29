@@ -18,14 +18,43 @@ from enum import Enum
 # Add parent directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from asn1_fuzzer.fuzzer import LDAPFuzzer
-from asn1_fuzzer.fuzz_generators import get_all_test_cases
+from section1_encoding.fuzzer import LDAPFuzzer
+from section1_encoding.fuzz_generators import get_all_test_cases as get_section1_tests
+from section2_envelope.fuzz_generators import get_all_test_cases as get_section2_tests
 
 
 class TestMethod(Enum):
     """Test execution method"""
     SOCKET = "socket"  # Use socket-based fuzzer
     SCAPY = "scapy"    # Use Scapy packet crafter
+
+
+def get_test_cases_for_suite(suite_id: str) -> Dict:
+    """
+    Get test cases for a specific suite or set of suites
+
+    Args:
+        suite_id: Suite identifier ('1.1.1', '2.1.1', 'section1', 'section2', 'all')
+
+    Returns:
+        Dictionary mapping suite IDs to test case lists
+    """
+    section1_tests = get_section1_tests()
+    section2_tests = get_section2_tests()
+
+    if suite_id == 'all':
+        # Combine both sections
+        return {**section1_tests, **section2_tests}
+    elif suite_id == 'section1':
+        return section1_tests
+    elif suite_id == 'section2':
+        return section2_tests
+    elif suite_id in section1_tests:
+        return {suite_id: section1_tests[suite_id]}
+    elif suite_id in section2_tests:
+        return {suite_id: section2_tests[suite_id]}
+    else:
+        raise ValueError(f"Unknown test suite: {suite_id}")
 
 
 class UnifiedTestRunner:
@@ -89,40 +118,41 @@ class UnifiedTestRunner:
         Run a specific test suite
 
         Args:
-            suite_id: Test suite ID ('1.1.1', '1.1.2', '1.1.3')
+            suite_id: Test suite ID ('1.1.1', '1.1.2', '1.1.3', '2.1.1', '2.1.2', '2.1.3',
+                     'section1', 'section2')
 
         Returns:
             Dictionary of results
         """
-        all_tests = get_all_test_cases()
+        test_suites = get_test_cases_for_suite(suite_id)
 
-        if suite_id not in all_tests:
-            raise ValueError(f"Unknown test suite: {suite_id}")
+        all_results = {}
 
-        test_cases = all_tests[suite_id]
+        for suite_key, test_cases in test_suites.items():
+            print(f"\n{'='*70}")
+            print(f"Running Test Suite {suite_key} using {self.method.value.upper()} method")
+            print(f"Target: {self.target_host}:{self.target_port}")
+            print(f"Test Cases: {len(test_cases)}")
+            print(f"{'='*70}\n")
 
-        print(f"\n{'='*70}")
-        print(f"Running Test Suite {suite_id} using {self.method.value.upper()} method")
-        print(f"Target: {self.target_host}:{self.target_port}")
-        print(f"Test Cases: {len(test_cases)}")
-        print(f"{'='*70}\n")
+            if self.method == TestMethod.SOCKET:
+                results = self.runner.run_test_suite(test_cases, self.check_server_health)
+            else:  # SCAPY
+                results = self.runner.run_test_suite(test_cases)
 
-        if self.method == TestMethod.SOCKET:
-            results = self.runner.run_test_suite(test_cases, self.check_server_health)
-        else:  # SCAPY
-            results = self.runner.run_test_suite(test_cases)
+            all_results[suite_key] = results
 
-        return {suite_id: results}
+        return all_results
 
     def run_all_tests(self) -> Dict:
         """
-        Run all test suites (1.1.1, 1.1.2, 1.1.3)
+        Run all test suites (Sections 1 and 2)
 
         Returns:
             Dictionary mapping suite IDs to results
         """
         print(f"\n{'='*70}")
-        print(f"LDAP Protocol Security Assessment - RFC 4511 Test Cases 1.1.x")
+        print(f"LDAP Protocol Security Assessment - RFC 4511 Test Cases")
         print(f"{'='*70}")
         print(f"Target: {self.target_host}:{self.target_port}")
         print(f"Method: {self.method.value.upper()}")
@@ -132,15 +162,23 @@ class UnifiedTestRunner:
 
         start_time = time.time()
 
-        if self.method == TestMethod.SOCKET:
-            all_results = self.runner.run_all_test_cases(self.check_server_health)
-        else:  # SCAPY
-            all_results = self.runner.run_all_tests()
+        # Get all test cases from both sections
+        all_test_suites = get_test_cases_for_suite('all')
+        all_results = {}
+
+        for suite_id, test_cases in all_test_suites.items():
+            print(f"\nRunning Test Suite {suite_id}...")
+            if self.method == TestMethod.SOCKET:
+                results = self.runner.run_test_suite(test_cases, self.check_server_health)
+            else:  # SCAPY
+                results = self.runner.run_test_suite(test_cases)
+            all_results[suite_id] = results
 
         elapsed_time = time.time() - start_time
 
         print(f"\n{'='*70}")
         print(f"All tests completed in {elapsed_time:.2f} seconds")
+        print(f"Total suites run: {len(all_results)}")
         print(f"{'='*70}\n")
 
         return all_results
@@ -185,11 +223,20 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Run all tests using socket method (default mode)
+  # Run all tests (Sections 1 and 2) using socket method
   python test_runner.py 192.168.1.100
 
-  # Run specific test suite
+  # Run Section 1 only (ASN.1/BER encoding tests)
+  python test_runner.py 192.168.1.100 --suite section1
+
+  # Run Section 2 only (LDAPMessage envelope tests)
+  python test_runner.py 192.168.1.100 --suite section2
+
+  # Run specific test suite (Section 1)
   python test_runner.py 192.168.1.100 --suite 1.1.1
+
+  # Run specific test suite (Section 2)
+  python test_runner.py 192.168.1.100 --suite 2.1.2
 
   # ITERATION MODE: Run each test 100 times
   python test_runner.py 192.168.1.100 --fuzz-mode iteration --iterations 100
@@ -203,8 +250,8 @@ Examples:
   # LOAD TEST MODE: Rapid-fire tests for 60 seconds
   python test_runner.py 192.168.1.100 --fuzz-mode load --duration 60
 
-  # Use Scapy method with iteration mode
-  python test_runner.py 192.168.1.100 --method scapy --fuzz-mode iteration --iterations 50
+  # Run Section 2 with iteration mode
+  python test_runner.py 192.168.1.100 --suite section2 --fuzz-mode iteration --iterations 50
 
   # Export results to JSON
   python test_runner.py 192.168.1.100 -o results.json
@@ -216,8 +263,12 @@ Examples:
                        help='Target port (default: 389)')
     parser.add_argument('-m', '--method', choices=['socket', 'scapy'], default='socket',
                        help='Test method (default: socket)')
-    parser.add_argument('-s', '--suite', choices=['1.1.1', '1.1.2', '1.1.3', 'all'], default='all',
-                       help='Test suite to run (default: all)')
+    parser.add_argument('-s', '--suite',
+                       choices=['1.1.1', '1.1.2', '1.1.3', '2.1.1', '2.1.2', '2.1.3',
+                               'section1', 'section2', 'all'],
+                       default='all',
+                       help='Test suite to run: specific suite (1.1.1-1.1.3, 2.1.1-2.1.3), '
+                            'section1 (all Section 1), section2 (all Section 2), or all (default: all)')
     parser.add_argument('-t', '--timeout', type=float, default=5.0,
                        help='Response timeout in seconds (default: 5.0)')
     parser.add_argument('-d', '--delay', type=float, default=0.1,
@@ -300,16 +351,11 @@ Examples:
             print(f"{'='*70}\n")
 
             if method == TestMethod.SOCKET:
-                from asn1_fuzzer.fuzz_generators import get_all_test_cases
-
-                if args.suite == 'all':
-                    all_test_cases = get_all_test_cases()
-                    test_cases = []
-                    for suite_tests in all_test_cases.values():
-                        test_cases.extend(suite_tests)
-                else:
-                    all_test_cases = get_all_test_cases()
-                    test_cases = all_test_cases.get(args.suite, [])
+                # Get test cases based on suite selection
+                all_test_cases = get_test_cases_for_suite(args.suite)
+                test_cases = []
+                for suite_tests in all_test_cases.values():
+                    test_cases.extend(suite_tests)
 
                 results = runner.runner.run_iteration_mode(
                     test_cases,

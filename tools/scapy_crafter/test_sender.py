@@ -22,7 +22,7 @@ try:
 except ImportError:
     SCAPY_AVAILABLE = False
 
-from asn1_fuzzer.fuzz_generators import get_all_test_cases
+from section1_encoding.fuzz_generators import get_all_test_cases
 
 
 class ResponseAnalysisResult(Enum):

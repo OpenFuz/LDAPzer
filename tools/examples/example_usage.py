@@ -17,7 +17,7 @@ def example_1_basic_fuzzing():
     print("Example 1: Basic Fuzzing with Socket-based Fuzzer")
     print("="*70)
 
-    from asn1_fuzzer.fuzzer import LDAPFuzzer
+    from section1_encoding.fuzzer import LDAPFuzzer
 
     # Configuration
     TARGET_HOST = '192.168.1.100'
@@ -51,8 +51,8 @@ def example_2_specific_test_suite():
     print("Example 2: Run Specific Test Suite (1.1.1)")
     print("="*70)
 
-    from asn1_fuzzer.fuzzer import LDAPFuzzer
-    from asn1_fuzzer.fuzz_generators import get_all_test_cases
+    from section1_encoding.fuzzer import LDAPFuzzer
+    from section1_encoding.fuzz_generators import get_all_test_cases
 
     TARGET_HOST = '192.168.1.100'
 
@@ -79,7 +79,7 @@ def example_3_scapy_packet_crafting():
 
     try:
         from scapy_crafter.packet_crafter import LDAPPacketCrafter
-        from asn1_fuzzer.ldap_messages import BindRequest, LDAPMessage
+        from common.ldap_messages import BindRequest, LDAPMessage
 
         TARGET_IP = '192.168.1.100'
 
@@ -127,8 +127,8 @@ def example_4_custom_malformed_packet():
     print("Example 4: Create Custom Malformed Packet")
     print("="*70)
 
-    from asn1_fuzzer.ber_encoder import BEREncoder, BERLength
-    from asn1_fuzzer.ldap_messages import LDAPMessage
+    from common.ber_encoder import BEREncoder, BERLength
+    from common.ldap_messages import LDAPMessage
 
     # Create a SEQUENCE with malformed length
     print("\nCreating packet with oversized length field...")
@@ -164,7 +164,7 @@ def example_5_results_logging():
     print("="*70)
 
     from test_harness.results_logger import ResultsLogger
-    from asn1_fuzzer.fuzzer import LDAPFuzzer, FuzzResult, ServerStatus
+    from section1_encoding.fuzzer import LDAPFuzzer, FuzzResult, ServerStatus
     import time
 
     # Create some sample results

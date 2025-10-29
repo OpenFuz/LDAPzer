@@ -11,8 +11,14 @@ Also includes mutation fuzzing and load testing capabilities.
 
 from typing import List, Dict, Tuple, Optional
 from enum import Enum
-from .ber_encoder import BEREncoder, BERLength, BERTag, fuzz_tag
-from .ldap_messages import (
+import sys
+import os
+
+# Add parent directory to path for common module
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from common.ber_encoder import BEREncoder, BERLength, BERTag, fuzz_tag
+from common.ldap_messages import (
     LDAPMessage, BindRequest, SearchRequest, UnbindRequest,
     ExtendedRequest, LDAPProtocolOp
 )

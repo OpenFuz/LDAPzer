@@ -18,8 +18,8 @@ import time
 # Add parent directory (tools/) to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from asn1_fuzzer.ldap_messages import BindRequest, SearchRequest, LDAPMessage
-from asn1_fuzzer.ber_encoder import BEREncoder
+from common.ldap_messages import BindRequest, SearchRequest, LDAPMessage
+from common.ber_encoder import BEREncoder
 
 
 def test_tcp_connection(host: str, port: int, timeout: float = 5.0) -> bool:

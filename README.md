@@ -150,11 +150,22 @@ LDAPzer/
 - 🔌 Extensible architecture for custom tests
 - 📝 Comprehensive documentation
 
+### Fuzzing Modes
+
+LDAPzer supports **four fuzzing modes** for different testing objectives:
+
+- **DEFAULT Mode** - Single run of 16 base test cases (RFC compliance)
+- **ITERATION Mode** - Run each test N times (robustness testing, race conditions)
+- **MUTATION Mode** - Random/targeted packet mutations (vulnerability discovery)
+- **LOAD TEST Mode** - Rapid-fire stress testing (DoS resistance, resource exhaustion)
+
+See [tools/README.md#fuzzing-modes](tools/README.md#fuzzing-modes) for detailed documentation.
+
 ---
 
 ## 💻 Usage Examples
 
-### Run All Tests
+### Run All Tests (Default Mode)
 
 ```bash
 cd tools/test_harness
@@ -166,6 +177,30 @@ python test_runner.py 192.168.1.100 -o results.json
 ```bash
 # Only test length encoding attacks
 python test_runner.py 192.168.1.100 --suite 1.1.1
+```
+
+### Iteration Mode (Robustness Testing)
+
+```bash
+# Run each test 100 times to detect race conditions
+python test_runner.py 192.168.1.100 --fuzz-mode iteration --iterations 100
+```
+
+### Mutation Mode (Vulnerability Discovery)
+
+```bash
+# Generate 500 random mutations to find unknown bugs
+python test_runner.py 192.168.1.100 --fuzz-mode mutation --count 500
+
+# Targeted mutations (tag/length/value corruption)
+python test_runner.py 192.168.1.100 --fuzz-mode mutation --count 100 --targeted
+```
+
+### Load Test Mode (Stress Testing)
+
+```bash
+# Rapid-fire tests for 60 seconds to detect DoS conditions
+python test_runner.py 192.168.1.100 --fuzz-mode load --duration 60
 ```
 
 ### Generate HTML Report
@@ -187,7 +222,7 @@ python test_runner.py 192.168.1.100 --method scapy
 python test_runner.py 192.168.1.100 -t 10 -d 1.0
 ```
 
-**See [tools/WORKFLOW.md](tools/WORKFLOW.md) for more examples.**
+**See [tools/WORKFLOW.md](tools/WORKFLOW.md) for complete workflow guide.**
 
 ---
 

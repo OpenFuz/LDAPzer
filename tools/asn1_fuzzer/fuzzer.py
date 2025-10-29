@@ -386,3 +386,195 @@ class LDAPFuzzer:
     def clear_results(self):
         """Clear all stored results"""
         self.results = []
+
+    def run_iteration_mode(self, test_cases: List[Dict], iterations: int,
+                          check_server_health: bool = True) -> List[FuzzResult]:
+        """
+        Run each test case multiple times (iteration mode)
+
+        Args:
+            test_cases: List of test case dictionaries
+            iterations: Number of times to run each test
+            check_server_health: Whether to check server health between tests
+
+        Returns:
+            List of all FuzzResult objects
+        """
+        self.logger.info(f"Starting ITERATION mode: {len(test_cases)} tests × {iterations} iterations")
+        self.logger.info(f"Total packets to send: {len(test_cases) * iterations}")
+
+        all_results = []
+
+        for iteration in range(1, iterations + 1):
+            self.logger.info(f"\n{'='*60}")
+            self.logger.info(f"Iteration {iteration} of {iterations}")
+            self.logger.info(f"{'='*60}\n")
+
+            for test_case in test_cases:
+                # Modify test ID to include iteration number
+                modified_test = test_case.copy()
+                modified_test['id'] = f"{test_case['id']}.iter{iteration}"
+                modified_test['name'] = f"{test_case['name']} (Iteration {iteration})"
+
+                result = self.run_test_case(modified_test)
+                all_results.append(result)
+
+                # Check server health if needed
+                if result.server_status in [ServerStatus.CONNECTION_CLOSED,
+                                           ServerStatus.CONNECTION_REFUSED]:
+                    if check_server_health:
+                        self.logger.info("Checking server health...")
+                        time.sleep(2)
+                        if not self._check_server_responsive():
+                            self.logger.error("Server is not responsive! Stopping iteration mode.")
+                            return all_results
+
+                time.sleep(self.delay_between_tests)
+
+        self.logger.info(f"\nIteration mode completed: {len(all_results)} total tests run")
+        return all_results
+
+    def run_mutation_mode(self, count: int, targeted: bool = False,
+                         check_server_health: bool = True) -> List[FuzzResult]:
+        """
+        Run mutation fuzzing mode
+
+        Args:
+            count: Number of mutations to generate and test
+            targeted: If True, use targeted mutations; if False, use random mutations
+            check_server_health: Whether to check server health between tests
+
+        Returns:
+            List of FuzzResult objects
+        """
+        from .fuzz_generators import get_all_test_cases, MutationGenerator
+
+        self.logger.info(f"Starting MUTATION mode: {'targeted' if targeted else 'random'}")
+        self.logger.info(f"Generating {count} mutations from base test cases")
+
+        # Get base test cases
+        all_base_tests = get_all_test_cases()
+        base_tests = []
+        for suite_tests in all_base_tests.values():
+            base_tests.extend(suite_tests)
+
+        # Generate mutations
+        if targeted:
+            mutations = MutationGenerator.generate_targeted_mutations(base_tests)
+            # Limit to requested count
+            mutations = mutations[:count]
+        else:
+            mutations = MutationGenerator.generate_mutation_tests(base_tests, count)
+
+        self.logger.info(f"Generated {len(mutations)} mutation test cases")
+        self.logger.info(f"{'='*60}\n")
+
+        # Run mutations
+        results = []
+        for i, mutation in enumerate(mutations, 1):
+            self.logger.info(f"Running mutation {i}/{len(mutations)}: {mutation['name']}")
+
+            result = self.run_test_case(mutation)
+            results.append(result)
+
+            # Check server health
+            if result.server_status in [ServerStatus.CONNECTION_CLOSED,
+                                       ServerStatus.CONNECTION_REFUSED]:
+                if check_server_health:
+                    self.logger.info("Checking server health...")
+                    time.sleep(2)
+                    if not self._check_server_responsive():
+                        self.logger.error("Server is not responsive! Stopping mutation mode.")
+                        break
+
+            time.sleep(self.delay_between_tests)
+
+        self.logger.info(f"\nMutation mode completed: {len(results)} mutations tested")
+        return results
+
+    def run_load_test_mode(self, duration_seconds: int, rapid_fire: bool = True) -> List[FuzzResult]:
+        """
+        Run load testing mode - continuously send tests for specified duration
+
+        Args:
+            duration_seconds: How long to run load test
+            rapid_fire: If True, minimal delay between tests; if False, use normal delay
+
+        Returns:
+            List of FuzzResult objects
+        """
+        from .fuzz_generators import get_all_test_cases
+
+        self.logger.info(f"Starting LOAD TEST mode")
+        self.logger.info(f"Duration: {duration_seconds} seconds")
+        self.logger.info(f"Mode: {'Rapid-fire' if rapid_fire else 'Normal delay'}")
+
+        # Get all base test cases
+        all_base_tests = get_all_test_cases()
+        base_tests = []
+        for suite_tests in all_base_tests.values():
+            base_tests.extend(suite_tests)
+
+        self.logger.info(f"Using {len(base_tests)} base test cases in rotation")
+        self.logger.info(f"{'='*60}\n")
+
+        # Save original delay
+        original_delay = self.delay_between_tests
+        if rapid_fire:
+            self.delay_between_tests = 0.01  # 10ms between tests
+
+        results = []
+        start_time = time.time()
+        iteration = 0
+        test_index = 0
+
+        try:
+            while (time.time() - start_time) < duration_seconds:
+                iteration += 1
+                test_case = base_tests[test_index % len(base_tests)]
+
+                # Modify test case for load testing
+                modified_test = test_case.copy()
+                modified_test['id'] = f"LOAD.{iteration}"
+                modified_test['name'] = f"Load Test {iteration}: {test_case['name']}"
+
+                result = self.run_test_case(modified_test)
+                results.append(result)
+
+                # Check if server crashed
+                if result.server_status in [ServerStatus.CONNECTION_CLOSED,
+                                           ServerStatus.CONNECTION_REFUSED]:
+                    self.logger.warning("Server connection issues detected during load test")
+                    # Continue load testing to see if server recovers
+
+                # Brief status update every 10 tests
+                if iteration % 10 == 0:
+                    elapsed = time.time() - start_time
+                    rate = iteration / elapsed if elapsed > 0 else 0
+                    self.logger.info(
+                        f"Load test progress: {iteration} tests in {elapsed:.1f}s "
+                        f"({rate:.1f} tests/sec)"
+                    )
+
+                test_index += 1
+                time.sleep(self.delay_between_tests)
+
+        except KeyboardInterrupt:
+            self.logger.info("\nLoad test interrupted by user")
+
+        finally:
+            # Restore original delay
+            self.delay_between_tests = original_delay
+
+        elapsed_time = time.time() - start_time
+        test_rate = len(results) / elapsed_time if elapsed_time > 0 else 0
+
+        self.logger.info(f"\n{'='*60}")
+        self.logger.info(f"Load test completed:")
+        self.logger.info(f"  Duration: {elapsed_time:.2f} seconds")
+        self.logger.info(f"  Total tests: {len(results)}")
+        self.logger.info(f"  Test rate: {test_rate:.2f} tests/second")
+        self.logger.info(f"  Average response time: {sum(r.response_time for r in results) / len(results):.3f}s")
+        self.logger.info(f"{'='*60}")
+
+        return results

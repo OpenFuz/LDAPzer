@@ -5,15 +5,19 @@ This module contains specific test case generators for:
 - Test Case 1.1.1: Length Encoding Attacks
 - Test Case 1.1.2: Type Encoding Violations
 - Test Case 1.1.3: Value Encoding Issues
+
+Also includes mutation fuzzing and load testing capabilities.
 """
 
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
+from enum import Enum
 from .ber_encoder import BEREncoder, BERLength, BERTag, fuzz_tag
 from .ldap_messages import (
     LDAPMessage, BindRequest, SearchRequest, UnbindRequest,
     ExtendedRequest, LDAPProtocolOp
 )
 import struct
+import random
 
 
 class TestCase_1_1_1_LengthEncodingAttacks:
@@ -516,6 +520,198 @@ class TestCase_1_1_3_ValueEncodingIssues:
         sequence_length = BERLength.encode_length(len(sequence_content))
 
         return sequence_tag + sequence_length + sequence_content
+
+
+class FuzzMode(Enum):
+    """Fuzzing mode selection"""
+    DEFAULT = "default"       # Single run of each test case (current behavior)
+    ITERATION = "iteration"   # Run each test N times
+    MUTATION = "mutation"     # Random field mutations
+    LOAD = "load"            # Rapid-fire load testing
+
+
+class MutationGenerator:
+    """
+    Generates random mutations of BER fields for fuzzing
+
+    Takes base test cases and applies random mutations to:
+    - Tag fields (flip bits, invalid values)
+    - Length fields (random values, overflow attempts)
+    - Value fields (bit flips, truncations, padding)
+    """
+
+    @staticmethod
+    def mutate_packet(base_packet: bytes, mutation_type: Optional[str] = None) -> Dict:
+        """
+        Apply random mutation to a base packet
+
+        Args:
+            base_packet: Original packet bytes
+            mutation_type: Specific mutation type, or None for random
+
+        Returns:
+            Dict with mutated packet and description
+        """
+        if mutation_type is None:
+            mutation_type = random.choice([
+                'bit_flip', 'byte_flip', 'truncate', 'extend',
+                'zero_out', 'max_out', 'random_bytes'
+            ])
+
+        mutated = bytearray(base_packet)
+        description = ""
+
+        if mutation_type == 'bit_flip':
+            # Flip random bits
+            num_flips = random.randint(1, 5)
+            for _ in range(num_flips):
+                pos = random.randint(0, len(mutated) - 1)
+                bit = random.randint(0, 7)
+                mutated[pos] ^= (1 << bit)
+            description = f"Flipped {num_flips} random bits"
+
+        elif mutation_type == 'byte_flip':
+            # Replace random bytes
+            num_flips = random.randint(1, min(10, len(mutated)))
+            for _ in range(num_flips):
+                pos = random.randint(0, len(mutated) - 1)
+                mutated[pos] = random.randint(0, 255)
+            description = f"Replaced {num_flips} random bytes"
+
+        elif mutation_type == 'truncate':
+            # Truncate packet
+            if len(mutated) > 5:
+                new_len = random.randint(5, len(mutated) - 1)
+                mutated = mutated[:new_len]
+                description = f"Truncated to {new_len} bytes"
+
+        elif mutation_type == 'extend':
+            # Extend with random bytes
+            extension_len = random.randint(1, 100)
+            extension = bytes([random.randint(0, 255) for _ in range(extension_len)])
+            mutated.extend(extension)
+            description = f"Extended with {extension_len} random bytes"
+
+        elif mutation_type == 'zero_out':
+            # Zero out random section
+            if len(mutated) > 4:
+                start = random.randint(0, len(mutated) - 4)
+                end = random.randint(start + 1, min(start + 20, len(mutated)))
+                for i in range(start, end):
+                    mutated[i] = 0x00
+                description = f"Zeroed bytes {start}-{end}"
+
+        elif mutation_type == 'max_out':
+            # Max out random section
+            if len(mutated) > 4:
+                start = random.randint(0, len(mutated) - 4)
+                end = random.randint(start + 1, min(start + 20, len(mutated)))
+                for i in range(start, end):
+                    mutated[i] = 0xFF
+                description = f"Maxed out bytes {start}-{end}"
+
+        elif mutation_type == 'random_bytes':
+            # Completely random packet
+            mutated = bytearray([random.randint(0, 255) for _ in range(len(mutated))])
+            description = "Completely randomized"
+
+        return {
+            'packet': bytes(mutated),
+            'description': description,
+            'mutation_type': mutation_type,
+            'original_length': len(base_packet),
+            'mutated_length': len(mutated)
+        }
+
+    @staticmethod
+    def generate_mutation_tests(base_tests: List[Dict], count: int) -> List[Dict]:
+        """
+        Generate N mutation tests from base test cases
+
+        Args:
+            base_tests: List of base test case dictionaries
+            count: Number of mutations to generate
+
+        Returns:
+            List of mutated test case dictionaries
+        """
+        mutations = []
+
+        for i in range(count):
+            # Pick random base test
+            base_test = random.choice(base_tests)
+
+            # Mutate it
+            mutation = MutationGenerator.mutate_packet(base_test['packet'])
+
+            mutations.append({
+                'id': f"MUTATION.{i+1}",
+                'name': f"Mutation {i+1}: {mutation['mutation_type']}",
+                'description': f"Based on {base_test['id']}: {mutation['description']}",
+                'packet': mutation['packet'],
+                'expected': 'protocolError (2), connection close, or ignore',
+                'base_test_id': base_test['id'],
+                'mutation_type': mutation['mutation_type']
+            })
+
+        return mutations
+
+    @staticmethod
+    def generate_targeted_mutations(base_tests: List[Dict]) -> List[Dict]:
+        """
+        Generate targeted mutations focusing on specific BER fields
+
+        Returns:
+            List of targeted mutation test cases
+        """
+        mutations = []
+        mutation_id = 1
+
+        for base_test in base_tests:
+            packet = bytearray(base_test['packet'])
+
+            # Mutation 1: Corrupt first tag byte
+            if len(packet) > 0:
+                corrupt_tag = packet.copy()
+                corrupt_tag[0] = 0xFF
+                mutations.append({
+                    'id': f"MUTATION.T.{mutation_id}",
+                    'name': f"Tag Corruption: {base_test['name']}",
+                    'description': f"Corrupted first tag byte to 0xFF",
+                    'packet': bytes(corrupt_tag),
+                    'expected': 'protocolError (2) or connection close',
+                    'base_test_id': base_test['id']
+                })
+                mutation_id += 1
+
+            # Mutation 2: Corrupt length byte
+            if len(packet) > 1:
+                corrupt_len = packet.copy()
+                corrupt_len[1] = 0xFF
+                mutations.append({
+                    'id': f"MUTATION.L.{mutation_id}",
+                    'name': f"Length Corruption: {base_test['name']}",
+                    'description': f"Corrupted length byte to 0xFF",
+                    'packet': bytes(corrupt_len),
+                    'expected': 'protocolError (2) or connection close',
+                    'base_test_id': base_test['id']
+                })
+                mutation_id += 1
+
+            # Mutation 3: Truncate at 50%
+            if len(packet) > 4:
+                truncated = packet[:len(packet) // 2]
+                mutations.append({
+                    'id': f"MUTATION.TR.{mutation_id}",
+                    'name': f"Truncation: {base_test['name']}",
+                    'description': f"Truncated packet to 50% length",
+                    'packet': bytes(truncated),
+                    'expected': 'protocolError (2) or connection close',
+                    'base_test_id': base_test['id']
+                })
+                mutation_id += 1
+
+        return mutations
 
 
 # Convenience function to get all test cases

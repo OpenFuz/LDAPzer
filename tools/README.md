@@ -101,6 +101,148 @@ python test_runner.py 192.168.1.100 -o results.json
 python test_runner.py 192.168.1.100 -o report.html
 ```
 
+## Fuzzing Modes
+
+LDAPzer supports four fuzzing modes to match different testing objectives:
+
+### Mode 1: DEFAULT (Compliance Testing)
+
+Single run of each test case - best for RFC compliance verification.
+
+```bash
+# Run each of the 16 base test cases once
+python test_runner.py 192.168.1.100 --fuzz-mode default
+```
+
+**Use when:**
+- Verifying RFC 4511 compliance
+- Initial security assessment
+- Quick testing (completes in ~10 seconds)
+
+**Results:** 16 tests (6 + 5 + 5 from test suites 1.1.1, 1.1.2, 1.1.3)
+
+---
+
+### Mode 2: ITERATION (Robustness Testing)
+
+Run each test case multiple times to detect intermittent issues and race conditions.
+
+```bash
+# Run each test 100 times
+python test_runner.py 192.168.1.100 --fuzz-mode iteration --iterations 100
+
+# Run specific suite 50 times
+python test_runner.py 192.168.1.100 --fuzz-mode iteration --iterations 50 --suite 1.1.1
+```
+
+**Use when:**
+- Testing for race conditions
+- Detecting intermittent crashes
+- Stress testing specific vulnerability patterns
+- Verifying fixes are stable
+
+**Results:** 16 tests × N iterations (e.g., 1,600 tests with --iterations 100)
+
+---
+
+### Mode 3: MUTATION (Discovery Testing)
+
+Generate random or targeted mutations of base test cases to discover unknown vulnerabilities.
+
+```bash
+# Generate 500 random mutations
+python test_runner.py 192.168.1.100 --fuzz-mode mutation --count 500
+
+# Generate 100 targeted mutations (tag/length/value corruption)
+python test_runner.py 192.168.1.100 --fuzz-mode mutation --count 100 --targeted
+
+# Large-scale mutation fuzzing
+python test_runner.py 192.168.1.100 --fuzz-mode mutation --count 10000 -o mutations.json
+```
+
+**Mutation types (random mode):**
+- Bit flips (random bit inversions)
+- Byte flips (random byte replacements)
+- Truncation (partial packet)
+- Extension (extra random bytes)
+- Zero-out (null byte sections)
+- Max-out (0xFF byte sections)
+- Complete randomization
+
+**Mutation types (targeted mode):**
+- Tag corruption (invalid tag bytes)
+- Length corruption (malformed length fields)
+- Truncation (50% packet length)
+
+**Use when:**
+- Discovering unknown vulnerabilities
+- Exploring parser edge cases
+- Finding crashes beyond RFC violations
+- Comprehensive security assessment
+
+**Results:** N mutation test cases (user-specified count)
+
+---
+
+### Mode 4: LOAD TEST (Stress Testing)
+
+Continuously send tests for a specified duration to detect resource exhaustion and DoS conditions.
+
+```bash
+# Rapid-fire tests for 60 seconds
+python test_runner.py 192.168.1.100 --fuzz-mode load --duration 60
+
+# Load test for 5 minutes with normal delay
+python test_runner.py 192.168.1.100 --fuzz-mode load --duration 300 --no-rapid-fire
+
+# High-intensity load test
+python test_runner.py 192.168.1.100 --fuzz-mode load --duration 120 --rapid-fire -t 1.0
+```
+
+**Use when:**
+- Testing for resource exhaustion
+- Detecting memory leaks
+- Finding DoS conditions
+- Measuring server performance under attack
+- Testing connection handling limits
+
+**Parameters:**
+- `--duration N`: Test for N seconds
+- `--rapid-fire`: Minimal delay (10ms) between tests (default: True)
+- `--no-rapid-fire`: Use normal delay between tests
+
+**Results:** Continuously tests until duration expires (typically 100-1000+ tests depending on server response time)
+
+---
+
+### Choosing the Right Mode
+
+| Objective | Recommended Mode | Example Command |
+|-----------|------------------|-----------------|
+| RFC compliance check | DEFAULT | `python test_runner.py <target>` |
+| Verify a specific fix | ITERATION | `python test_runner.py <target> --fuzz-mode iteration --iterations 100 --suite 1.1.1` |
+| Find unknown bugs | MUTATION | `python test_runner.py <target> --fuzz-mode mutation --count 1000` |
+| Test DoS resistance | LOAD | `python test_runner.py <target> --fuzz-mode load --duration 300` |
+| Comprehensive assessment | ALL MODES | Run each mode sequentially |
+
+---
+
+### Combining Modes with Other Options
+
+```bash
+# Iteration mode with specific suite and timeout
+python test_runner.py 192.168.1.100 --fuzz-mode iteration --iterations 50 --suite 1.1.2 -t 10
+
+# Mutation mode with output file
+python test_runner.py 192.168.1.100 --fuzz-mode mutation --count 500 -o mutations.json
+
+# Load test with custom delay
+python test_runner.py 192.168.1.100 --fuzz-mode load --duration 120 -d 0.5
+
+# Disable health checks for faster iteration testing
+python test_runner.py 192.168.1.100 --fuzz-mode iteration --iterations 200 --no-health-check
+```
+
 ## Detailed Usage
 
 ### ASN.1 Fuzzer (Socket-based)
@@ -162,12 +304,22 @@ The test runner provides a unified interface for both methods:
 # Full command-line options
 python test_runner.py TARGET [OPTIONS]
 
-Options:
+Basic Options:
   -p, --port PORT          Target port (default: 389)
   -m, --method METHOD      Test method: socket or scapy (default: socket)
   -s, --suite SUITE        Test suite: 1.1.1, 1.1.2, 1.1.3, or all
   -t, --timeout SECONDS    Response timeout (default: 5.0)
   -d, --delay SECONDS      Delay between tests (default: 0.1)
+
+Fuzzing Mode Options:
+  --fuzz-mode MODE         Fuzzing mode: default, iteration, mutation, load
+  --iterations N           Number of iterations per test (iteration mode, default: 10)
+  --count N                Number of mutations to generate (mutation mode, default: 100)
+  --duration N             Duration in seconds (load mode, default: 60)
+  --targeted               Use targeted mutations (mutation mode only)
+  --rapid-fire             Use rapid-fire mode with minimal delay (load mode, default: True)
+
+Other Options:
   --no-health-check        Disable server health checks
   --source-ip IP           Source IP for Scapy (optional)
   -o, --output FILE        Output file (JSON, CSV, HTML, or MD)

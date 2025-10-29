@@ -185,17 +185,26 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Run all tests using socket method
+  # Run all tests using socket method (default mode)
   python test_runner.py 192.168.1.100
 
   # Run specific test suite
   python test_runner.py 192.168.1.100 --suite 1.1.1
 
-  # Use Scapy method
-  python test_runner.py 192.168.1.100 --method scapy
+  # ITERATION MODE: Run each test 100 times
+  python test_runner.py 192.168.1.100 --fuzz-mode iteration --iterations 100
 
-  # Custom timeout and delay
-  python test_runner.py 192.168.1.100 -t 10 -d 0.5
+  # MUTATION MODE: Generate and run 500 random mutations
+  python test_runner.py 192.168.1.100 --fuzz-mode mutation --count 500
+
+  # MUTATION MODE: Run targeted mutations (tag/length/value corruption)
+  python test_runner.py 192.168.1.100 --fuzz-mode mutation --count 100 --targeted
+
+  # LOAD TEST MODE: Rapid-fire tests for 60 seconds
+  python test_runner.py 192.168.1.100 --fuzz-mode load --duration 60
+
+  # Use Scapy method with iteration mode
+  python test_runner.py 192.168.1.100 --method scapy --fuzz-mode iteration --iterations 50
 
   # Export results to JSON
   python test_runner.py 192.168.1.100 -o results.json
@@ -213,6 +222,23 @@ Examples:
                        help='Response timeout in seconds (default: 5.0)')
     parser.add_argument('-d', '--delay', type=float, default=0.1,
                        help='Delay between tests in seconds (default: 0.1)')
+
+    # Fuzzing mode options
+    parser.add_argument('--fuzz-mode', choices=['default', 'iteration', 'mutation', 'load'],
+                       default='default',
+                       help='Fuzzing mode: default (single run), iteration (repeat N times), '
+                            'mutation (random mutations), load (rapid-fire stress test)')
+    parser.add_argument('--iterations', type=int, default=10,
+                       help='Number of iterations per test (iteration mode, default: 10)')
+    parser.add_argument('--count', type=int, default=100,
+                       help='Number of mutations to generate (mutation mode, default: 100)')
+    parser.add_argument('--duration', type=int, default=60,
+                       help='Duration in seconds (load mode, default: 60)')
+    parser.add_argument('--targeted', action='store_true',
+                       help='Use targeted mutations (mutation mode only)')
+    parser.add_argument('--rapid-fire', action='store_true', default=True,
+                       help='Use rapid-fire mode with minimal delay (load mode, default: True)')
+
     parser.add_argument('--no-health-check', action='store_true',
                        help='Disable server health checks between tests')
     parser.add_argument('--source-ip', help='Source IP address (Scapy only)')
@@ -253,21 +279,107 @@ Examples:
             source_ip=args.source_ip
         )
 
-        # Run tests
-        if args.suite == 'all':
-            results = runner.run_all_tests()
-        else:
-            results = runner.run_test_suite(args.suite)
+        # Determine fuzzing mode and run tests accordingly
+        results = None
+
+        if args.fuzz_mode == 'default':
+            # DEFAULT MODE: Single run of each test case
+            print(f"\n{'='*70}")
+            print(f"Running in DEFAULT mode (single run of each test)")
+            print(f"{'='*70}\n")
+
+            if args.suite == 'all':
+                results = runner.run_all_tests()
+            else:
+                results = runner.run_test_suite(args.suite)
+
+        elif args.fuzz_mode == 'iteration':
+            # ITERATION MODE: Run each test N times
+            print(f"\n{'='*70}")
+            print(f"Running in ITERATION mode ({args.iterations} iterations per test)")
+            print(f"{'='*70}\n")
+
+            if method == TestMethod.SOCKET:
+                from asn1_fuzzer.fuzz_generators import get_all_test_cases
+
+                if args.suite == 'all':
+                    all_test_cases = get_all_test_cases()
+                    test_cases = []
+                    for suite_tests in all_test_cases.values():
+                        test_cases.extend(suite_tests)
+                else:
+                    all_test_cases = get_all_test_cases()
+                    test_cases = all_test_cases.get(args.suite, [])
+
+                results = runner.runner.run_iteration_mode(
+                    test_cases,
+                    iterations=args.iterations,
+                    check_server_health=not args.no_health_check
+                )
+            else:
+                print("⚠ Iteration mode is currently only supported with socket method")
+                print("  Falling back to default mode...")
+                results = runner.run_all_tests()
+
+        elif args.fuzz_mode == 'mutation':
+            # MUTATION MODE: Generate and run random/targeted mutations
+            mutation_type = "TARGETED" if args.targeted else "RANDOM"
+            print(f"\n{'='*70}")
+            print(f"Running in MUTATION mode ({mutation_type}, {args.count} mutations)")
+            print(f"{'='*70}\n")
+
+            if method == TestMethod.SOCKET:
+                results = runner.runner.run_mutation_mode(
+                    count=args.count,
+                    targeted=args.targeted,
+                    check_server_health=not args.no_health_check
+                )
+            else:
+                print("⚠ Mutation mode is currently only supported with socket method")
+                print("  Falling back to default mode...")
+                results = runner.run_all_tests()
+
+        elif args.fuzz_mode == 'load':
+            # LOAD TEST MODE: Rapid-fire stress testing
+            fire_mode = "RAPID-FIRE" if args.rapid_fire else "NORMAL"
+            print(f"\n{'='*70}")
+            print(f"Running in LOAD TEST mode ({fire_mode}, {args.duration} seconds)")
+            print(f"{'='*70}\n")
+
+            if method == TestMethod.SOCKET:
+                results = runner.runner.run_load_test_mode(
+                    duration_seconds=args.duration,
+                    rapid_fire=args.rapid_fire
+                )
+            else:
+                print("⚠ Load test mode is currently only supported with socket method")
+                print("  Falling back to default mode...")
+                results = runner.run_all_tests()
 
         # Export results
-        if args.output:
+        if args.output and results:
             from results_logger import ResultsLogger
             logger = ResultsLogger(args.output)
 
-            if method == TestMethod.SOCKET:
-                logger.log_socket_results(runner.get_results())
-            else:
-                logger.log_scapy_results(runner.get_results())
+            # Handle different result formats
+            if isinstance(results, list):
+                # Flatten results if needed
+                flat_results = []
+                for item in results:
+                    if isinstance(item, dict):
+                        # Dictionary of results by suite
+                        for suite_results in item.values():
+                            flat_results.extend(suite_results)
+                    else:
+                        flat_results.append(item)
+
+                logger.log_socket_results(flat_results)
+            elif isinstance(results, dict):
+                # Dictionary format from run_all_tests
+                flat_results = []
+                for suite_results in results.values():
+                    flat_results.extend(suite_results)
+                logger.log_socket_results(flat_results)
 
             logger.save()
             print(f"\nResults saved to {args.output}")
